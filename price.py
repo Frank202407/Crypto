@@ -7,8 +7,6 @@ from datetime import datetime, timedelta
 # 币种列表
 symbols = ["TIAUSDT", "SUIUSDT", "ARBUSDT", "SOLUSDT", "AAVEUSDT", "XRPUSDT", "LTCUSDT", "DOGEUSDT"]
 
-# Binance API 地址
-BASE_URL = "https://api.binance.com"
 
 # 历史K线缓存
 kline_cache = {}
@@ -16,8 +14,8 @@ last_kline_update = {}
 
 # 设置代理（如有）
 proxies = {
-    "http": "http://127.0.0.1:42010",
-    "https": "http://127.0.0.1:42010"
+    "http": "http://127.0.0.1:42022",
+    "https": "http://127.0.0.1:42022"
 }
 
 # 蜂鸣器函数
@@ -34,7 +32,7 @@ def beep_for_5s():
 # 合并获取所有币种实时价格
 def get_all_prices():
     try:
-        url = f"{BASE_URL}/api/v3/ticker/price"
+        url = f"https://fapi.binance.com/fapi/v1/ticker/price"
         r = requests.get(url, proxies=proxies, timeout=10)
         data = r.json()
         prices = {item['symbol']: float(item['price']) for item in data if item['symbol'] in symbols}
@@ -43,11 +41,11 @@ def get_all_prices():
         print(f"❌ 获取合并价格失败: {e}")
         return {}
 
-# 获取最近9根K线的close
+# 获取最近13根K线的close
 def get_kline(symbol):
     try:
-        url = f"{BASE_URL}/api/v3/klines"
-        params = {"symbol": symbol, "interval": "15m", "limit": 9}
+        url = f"https://fapi.binance.com/fapi/v1/klines"
+        params = {"symbol": symbol, "interval": "15m", "limit": 13}
         r = requests.get(url, params=params, proxies=proxies, timeout=10)
         data = r.json()
         closes = [float(k[4]) for k in data]
@@ -66,6 +64,7 @@ def poll_loop():
             # 每15分钟刷新K线
             if symbol not in last_kline_update or now - last_kline_update[symbol] >= timedelta(minutes=15):
                 kline = get_kline(symbol)
+                time.sleep(0.5)
                 if kline:
                     kline_cache[symbol] = kline
                     last_kline_update[symbol] = now
@@ -77,15 +76,16 @@ def poll_loop():
             if price is None or symbol not in kline_cache or len(kline_cache[symbol]) < 9:
                 continue
 
-            # MA10 = 最近9根K线 + 实时价格
+            # MA14 = 最近13根K线 + 实时价格
             closes = kline_cache[symbol]
-            ma10 = (sum(closes) + price) / 10
-            deviation = abs(price - ma10) / ma10
+            ma14 = (sum(closes) + price) / 14
+            deviation = abs(price - ma14) / ma14
 
-            print(f"{symbol}: 当前={price:.4f}, MA10={ma10:.4f}, 偏离={deviation:.2%}")
+        
+            print(f"{symbol}: 当前={price:.4f}, MA14={ma14:.4f}, 偏离={deviation:.2%}")
 
             if deviation > 0.03:
-                print(f"🚨 {symbol} 偏离 MA10 超过 3%")
+                print(f"🚨 {symbol} 偏离 MA14 {deviation:.1%}")
                 threading.Thread(target=beep_for_5s).start()
 
         time.sleep(5)
